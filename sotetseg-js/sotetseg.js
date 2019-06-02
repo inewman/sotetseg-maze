@@ -158,6 +158,12 @@ function connectPoints(points, color) {
 	ctx.stroke();
 }
 
+function showWasted() {
+	for (var i = 0; i < wasted_tiles.length; i++) {
+		drawMazeTile(wasted_tiles[i].x, wasted_tiles[i].y, color_linesolv);
+	}
+}
+
 function showPassed() {
 	for (var i = 0; i < path_taken.length; i++) {
 		drawPathTile(path_taken[i].x, path_taken[i].y);
@@ -207,12 +213,15 @@ canvas.addEventListener('mousedown', function (event) {
 });
 
 function writeTime() {
-	document.getElementById("info").innerHTML = `${(ticks * tick_length/1000).toFixed(1)} seconds (${ticks} ticks)`;
+	document.getElementById("info").innerHTML = `${(ticks * tick_length/1000).toFixed(1)} seconds (${ticks} ticks, ${ticks_wasted} wasted)`;
 }
 
 function gameTick() {
+	if ((player_position.x == targeted_tile.x && player_position.y == targeted_tile.y)) {
+		ticks_wasted += 1;
+		wasted_tiles.push(new Point(player_position.x, player_position.y));
+	}
 	ticks += 1;
-	writeTime();
 	let new_tiles = getPassedTiles(player_position, targeted_tile);
 	for (let i = 0; i < new_tiles.length; i++) {
 		path_taken.push(new_tiles[i]);
@@ -222,10 +231,10 @@ function gameTick() {
 		session_active = false;
 		clearInterval(timerTick);
 	}
-
 	drawMaze();
+	showWasted();
 	showPassed();
-
+	writeTime();
 	if (!(player_position.x == targeted_tile.x && player_position.y == targeted_tile.y)) {
 		drawTargetTile(targeted_tile.x, targeted_tile.y);
 	}
@@ -233,6 +242,8 @@ function gameTick() {
 
 function newSession() {
 	ticks = 0;
+	ticks_wasted = 0;
+	wasted_tiles = new Array();
 	session_active = false;
 	clearInterval(timerTick);
 	moves = new Array();
@@ -246,6 +257,8 @@ function newSession() {
 
 function reset() {
 	ticks = 0;
+	ticks_wasted = 0;
+	wasted_tiles = new Array();
 	session_active = false;
 	clearInterval(timerTick);
 	moves = new Array();
@@ -258,6 +271,8 @@ function reset() {
 }
 
 var ticks;
+var ticks_wasted;
+var wasted_tiles;
 var timerTick;
 var session_active;
 var seed;
