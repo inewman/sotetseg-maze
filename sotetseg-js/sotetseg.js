@@ -1,7 +1,7 @@
 function showAbout() {
-	alert("This training tool is designed to practice movement in the Sotetseg "   +
-		"maze from the Theatre of Blood in Oldschool Runescape. You can share "    +
-		"mazes by copying the seed and copy/pasting it into the Edit Seed prompt.");
+	alert("This training tool is designed to practice movement in the " +
+		"Sotetseg maze from the Theatre of Blood in Oldschool Runescape. " +
+		"You can share mazes by copy/pasting the seed into the Edit Seed prompt.");
 }
 
 const tick_length  = 600;
@@ -22,14 +22,13 @@ const color_tilenext = "#C8C8C8";
 const color_tilesolv = "#6495ED";
 const color_linesolv = "#FFFF00";
 
+const color_circpass = "#008000";
+const color_circfail = "#DC143C";
+
 var canvas = document.getElementById("sotetseg-maze");
 var ctx = canvas.getContext("2d");
 canvas.width = tile_size * maze_width;
 canvas.height = tile_size * maze_height;
-
-function randRange(a, b) {
-	return Math.floor(Math.random() * (b - a + 1)) + a;
-}
 
 class Point {
 	constructor(x, y) {
@@ -38,9 +37,50 @@ class Point {
 	}
 }
 
+function getTileClicked(event) {
+	var rect = canvas.getBoundingClientRect();
+	var pixel_x = event.clientX - rect.left;
+	var pixel_y = event.clientY - rect.top;
+	var tile_x = Math.floor(pixel_x / tile_size);
+	var tile_y = Math.floor(pixel_y / tile_size);
+	return { x: tile_x, y: tile_y };
+}
+
+function randRange(a, b) {
+	return Math.floor(Math.random() * (b - a + 1)) + a;
+}
+
+function drawPathTile(x, y) {
+	let pos_x = tile_size * x;
+	let pos_y = tile_size * y;
+	ctx.fillStyle = maze[x][y] ? color_circpass : color_circfail;
+	ctx.beginPath(pos_x, pos_y, pos_x+tile_size, pos_y+tile_size);
+	ctx.arc(pos_x+tile_size/2, pos_y+tile_size/2, tile_size/3.4, 0, 2*Math.PI);
+	ctx.fill();
+}
+
+function drawTargetTile(x, y) {
+	let pos_x = tile_size * x;
+	let pos_y = tile_size * y;
+	ctx.fillStyle = color_tilesolv;
+	ctx.fillRect(pos_x, pos_y, tile_size, tile_size);
+	ctx.fillStyle = color_mazeback;
+	ctx.fillRect(
+		pos_x + tile_stroke,
+		pos_y + tile_stroke,
+		tile_size - tile_stroke * 2,
+		tile_size - tile_stroke * 2
+	);
+	ctx.beginPath(pos_x, pos_y, pos_x+tile_size, pos_y+tile_size);
+	ctx.arc(pos_x+tile_size/2, pos_y+tile_size/2, tile_size/3.4, 0, 2*Math.PI);
+	ctx.lineWidth = tile_stroke*1.2;
+	ctx.strokeStyle = color_tilesolv;
+	ctx.stroke();
+}
+
 function drawMazeTile(x, y, color_tile) {
-	var pos_x = tile_size * x;
-	var pos_y = tile_size * y;
+	let pos_x = tile_size * x;
+	let pos_y = tile_size * y;
 	ctx.fillStyle = color_tile;
 	ctx.fillRect(pos_x, pos_y, tile_size, tile_size);
 	ctx.fillStyle = color_mazeback;
@@ -95,34 +135,19 @@ function makeSeededMaze(seed) {
 }
 
 function makeSeed() {
-	seed = Array(path_turns);
+	seed = new Array(path_turns);
 	seed[0] = randRange(0, maze_width - 1);
 	for (var i = 1; i < seed.length; i++) {
 		seed[i] = randRange(Math.max(seed[i-1] - max_x_change, 0), Math.min(seed[i-1] + max_x_change, maze_width - 1));
 	}
-	return seed;
 }
 
 function makeMaze() {
-	seed = makeSeed();
+	makeSeed();
 	return makeSeededMaze(seed);
 }
 
-function startMaze() {
-	maze = makeMaze();
-	drawMaze(maze);
-	moves = new Array();
-	path_taken = new Array();
-}
-
-function resetMaze() {
-	drawMaze(maze);
-	moves = new Array();
-	path_taken = new Array();
-}
-
 function connectPoints(points, color) {
-	console.log(points);
 	ctx.beginPath();
 	for (var i = 0; i < points.length - 1; i++) {
 		ctx.moveTo(points[i].x * tile_size + tile_size / 2, points[i].y * tile_size + tile_size / 2);
@@ -133,13 +158,10 @@ function connectPoints(points, color) {
 	ctx.stroke();
 }
 
-function getTileClicked(event) {
-	var rect = canvas.getBoundingClientRect();
-	var pixel_x = event.clientX - rect.left;
-	var pixel_y = event.clientY - rect.top;
-	var tile_x = Math.floor(pixel_x / tile_size);
-	var tile_y = Math.floor(pixel_y / tile_size);
-	return { x: tile_x, y: tile_y };
+function showPassed() {
+	for (var i = 0; i < path_taken.length; i++) {
+		drawPathTile(path_taken[i].x, path_taken[i].y);
+	}
 }
 
 function editSeed() {
@@ -156,10 +178,9 @@ function editSeed() {
 
 function getPassedTiles(previous, target) {
 	let current = new Point(previous.x, previous.y);
-	let movement_vector = new Point(target.x - current.x, target.y - current.y);
-	let turns = 0;
+	let result = new Array();
 	while (result.length < 2 && !(current.x == target.x && current.y == target.y)) {
-		movement_vector = new Point(target.x - current.x, target.y - current.y);
+		let movement_vector = new Point(target.x - current.x, target.y - current.y);
 		if (Math.abs(movement_vector.x) == Math.abs(movement_vector.y)) { // diagonal
 			current.x += (current.x < target.x ? 1 : -1);
 			current.y += (current.y < target.y ? 1 : -1);
@@ -169,56 +190,82 @@ function getPassedTiles(previous, target) {
 			current.y += (current.y < target.y ? 1 : -1);
 		}
 		result.push(new Point(current.x, current.y));
-		turns++;
 	}
 	return result;
 }
 
 canvas.addEventListener('mousedown', function (event) {
-	var clickedTile = getTileClicked(event);
-	let targetTile = new Point(clickedTile.x, clickedTile.y)
-	drawMazeTile(clickedTile.x, clickedTile.y, color_tilesolv);
-	if (moves.length > 0) {
-		let tiles_passed = getPassedTiles(moves[moves.length -1], targetTile);
-		for (var i = 0; i < tiles_passed.length; i++) {
-			path_taken.push(tiles_passed[i]);
-		}
-	} else {
-		path_taken.push(targetTile);
+	let clickedTile = getTileClicked(event);
+	targeted_tile = new Point(clickedTile.x, clickedTile.y);
+	drawTargetTile(targeted_tile.x, targeted_tile.y);
+	if (moves.length == 0 && !session_active) {
+		session_active = true;
+		player_position = new Point(targeted_tile.x, targeted_tile.y);
+		path_taken.push(targeted_tile);
+		timerTick = setInterval(gameTick, tick_length);
 	}
-	moves.push(targetTile);
 });
 
-// function restartSession() {
-// 	endSession();
-// 	startSession();
-// }
-
-// function endSession() {
-// 	clearInterval(timerTick);
-// }
-
-// function startSession() {
-// 	ticks = 0;
-// 	session_active = true;
-// }
-
-function gameTick() {
-  ticks += 1;
-  document.getElementById("info").innerHTML = (ticks * tick_length/1000).toFixed(1) + " seconds";
-  // process movement
+function writeTime() {
+	document.getElementById("info").innerHTML = `${(ticks * tick_length/1000).toFixed(1)} seconds (${ticks} ticks)`;
 }
 
-// var ticks = 0;
-// var session_active = false;
-// var timerTick = setInterval(gameTick, tick_length);
+function gameTick() {
+	ticks += 1;
+	writeTime();
+	let new_tiles = getPassedTiles(player_position, targeted_tile);
+	for (let i = 0; i < new_tiles.length; i++) {
+		path_taken.push(new_tiles[i]);
+	}
+	player_position = new Point(path_taken[path_taken.length - 1].x, path_taken[path_taken.length - 1].y);
+	if (player_position.y == 0) {
+		session_active = false;
+		clearInterval(timerTick);
+	}
 
+	drawMaze();
+	showPassed();
 
+	if (!(player_position.x == targeted_tile.x && player_position.y == targeted_tile.y)) {
+		drawTargetTile(targeted_tile.x, targeted_tile.y);
+	}
+}
+
+function newSession() {
+	ticks = 0;
+	session_active = false;
+	clearInterval(timerTick);
+	moves = new Array();
+	player_position = new Point();
+	targeted_tile = new Point();
+	path_taken = new Array();
+	maze = makeMaze();
+	drawMaze(maze);
+	writeTime();
+}
+
+function reset() {
+	ticks = 0;
+	session_active = false;
+	clearInterval(timerTick);
+	moves = new Array();
+	player_position = new Point();
+	targeted_tile = new Point();
+	path_taken = new Array();
+	maze = makeSeededMaze(seed);
+	drawMaze(maze);
+	writeTime();
+}
+
+var ticks;
+var timerTick;
+var session_active;
 var seed;
 var maze;
-var weighted_maze;
-var moves = new Array();
+var moves;
 var player_position;
-var path_taken = new Array();
+var targeted_tile;
+var path_taken;
 
-startMaze();
+
+newSession();
