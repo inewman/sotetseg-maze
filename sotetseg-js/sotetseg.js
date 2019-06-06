@@ -4,6 +4,9 @@ function showAbout() {
 		"You can share mazes by copy/pasting the seed into the Edit Seed prompt.");
 }
 
+const FPS = 50;
+const delta_time = 1000 / FPS;
+
 const tick_length  = 600;
 
 const maze_width   = 14;
@@ -105,8 +108,31 @@ function drawMaze() {
 	}
 }
 
+function pathWeighting() {
+	weighted_maze = Array(maze_width);
+	for (let x = 0; x < maze_width; x++) {
+		weighted_maze[x] = Array(maze_height);
+		for (let y = 0; y < maze_height; y++) {
+			weighted_maze[x][y] = 0;
+		}
+	}
+	let t_pos = new Point(-1, -1);
+	let p_pos = new Point(-1, -1);
+	let c_pos = new Point(seed[0], maze_height - 1)
+	counter = 1;
+	while (c_pos) {
+		weighted_maze[c_pos.x][c_pos.y] = counter
+		counter += 1
+		t_pos.x = p_pos.x;
+		t_pos.y = p_pos.y;
+		p_pos.x = c_pos.x;
+		p_pos.y = c_pos.y;
+		c_pos = getNextPathTile(c_pos, t_pos);
+	}
+}
+
 function makeSeededMaze(seed) {
-	var maze = new Array(maze_width);
+	let maze = new Array(maze_width);
 	for (var x = 0; x < maze.length; x++) {
 		maze[x] = new Array(maze_height);
 	}
@@ -118,8 +144,8 @@ function makeSeededMaze(seed) {
 	var next_x = -1;
 	var s = 0;
 	var x = seed[s];
-	var y = 0;
-	while (y < maze[0].length) {
+	var y = maze[0].length - 1;
+	while (y >= 0) {
 		if (y % 2) {
 			next_x = seed[++s];
 			for (var i = Math.min(x, next_x); i <= Math.max(x, next_x); i++) {
@@ -129,8 +155,9 @@ function makeSeededMaze(seed) {
 		} else {
 			maze[x][y] = true;
 		}
-		y++;
+		y--;
 	}
+	start_pos = new Point(seed[0], maze_height);
 	return maze;
 }
 
@@ -158,28 +185,63 @@ function connectPoints(points, color) {
 	ctx.stroke();
 }
 
-function showWasted() {
+function drawWastedTiles() {
 	for (var i = 0; i < wasted_tiles.length; i++) {
 		drawMazeTile(wasted_tiles[i].x, wasted_tiles[i].y, color_linesolv);
 	}
 }
 
-function showPassed() {
+function drawPassedTiles() {
 	for (var i = 0; i < path_taken.length; i++) {
 		drawPathTile(path_taken[i].x, path_taken[i].y);
 	}
 }
 
+function drawText() {
+	for (let x = 0; x < maze_width; x++) {
+		for (let y = 0; y < maze_height; y++) {
+			if (maze[x][y]) {
+				ctx.textAlign = "center";
+				ctx.fillStyle = "#FFFFFF";
+				ctx.fillText(`(${weighted_maze[x][y]})`, x*tile_size + tile_size*0.5, y*tile_size + tile_size*0.5);
+			}
+		}
+	}
+}
+
+function getNextPathTile(c_pos, o_pos) {
+	let neighbors = Array(4);
+	neighbors[0] = new Point(c_pos.x, c_pos.y + 1);
+	neighbors[1] = new Point(c_pos.x + 1, c_pos.y);
+	neighbors[2] = new Point(c_pos.x, c_pos.y - 1);
+	neighbors[3] = new Point(c_pos.x - 1, c_pos.y);
+	for (let i = 0; i < neighbors.length; i++) {
+		if (neighbors[i].x < 0 || neighbors[i].x >= maze_width) {
+			continue;
+		}
+		if (neighbors[i].y < 0 || neighbors[i].y >= maze_height){
+			continue;
+		}
+		if (maze[neighbors[i].x][neighbors[i].y] == false) {
+			continue;
+		}
+		if (o_pos.x == neighbors[i].x && o_pos.y == neighbors[i].y) {
+			continue;
+		}
+		return neighbors[i];
+	}
+	return null;
+}
+
 function editSeed() {
-	var savestate = prompt("Enter a seed", seed.join(","));
-	savestate = savestate.split(',').map(Number);
+	var savestate = prompt("Enter a seed", seed.join(" "));
+	savestate = savestate.split(' ').map(Number);
 	if (savestate.length != path_turns || Math.max(savestate) >= maze_width || Math.min(savestate) < 0) {
 		alert("Bad seed");
 		return;
 	}
 	seed = savestate;
-	maze = makeSeededMaze(seed);
-	drawMaze(maze);
+	reset();
 }
 
 function getPassedTiles(previous, target) {
@@ -203,17 +265,26 @@ function getPassedTiles(previous, target) {
 canvas.addEventListener('mousedown', function (event) {
 	let clickedTile = getTileClicked(event);
 	targeted_tile = new Point(clickedTile.x, clickedTile.y);
-	drawTargetTile(targeted_tile.x, targeted_tile.y);
+	drawState();
 	if (moves.length == 0 && !session_active) {
 		session_active = true;
-		player_position = new Point(targeted_tile.x, targeted_tile.y);
+		player_position = new Point(start_pos.x, start_pos.y);
 		path_taken.push(targeted_tile);
 		timerTick = setInterval(gameTick, tick_length);
 	}
 });
 
+function drawState() {
+	drawMaze();
+	drawPassedTiles();
+	drawWastedTiles();
+	if (!(player_position.x == targeted_tile.x && player_position.y == targeted_tile.y)) {
+		drawTargetTile(targeted_tile.x, targeted_tile.y);
+	}
+}
+
 function writeTime() {
-	document.getElementById("info").innerHTML = `${(ticks * tick_length/1000).toFixed(1)} seconds (${ticks} ticks, ${ticks_wasted} wasted)`;
+	document.getElementById("timer").innerHTML = `${(ticks * tick_length/1000).toFixed(1)} seconds (${ticks} ticks, ${ticks_wasted} wasted)`;
 }
 
 function gameTick() {
@@ -231,45 +302,44 @@ function gameTick() {
 		session_active = false;
 		clearInterval(timerTick);
 	}
-	drawMaze();
-	showWasted();
-	showPassed();
+	drawState();
 	writeTime();
-	if (!(player_position.x == targeted_tile.x && player_position.y == targeted_tile.y)) {
-		drawTargetTile(targeted_tile.x, targeted_tile.y);
-	}
 }
 
-function newSession() {
+function gameFrame() {
+	drawState();
+}
+
+function resetvars() {
 	ticks = 0;
 	ticks_wasted = 0;
 	wasted_tiles = new Array();
+	path_arr= new Array();
 	session_active = false;
 	clearInterval(timerTick);
 	moves = new Array();
 	player_position = new Point();
 	targeted_tile = new Point();
 	path_taken = new Array();
+}
+
+function newSession() {
+	resetvars();
 	maze = makeMaze();
+	pathWeighting();
 	drawMaze(maze);
 	writeTime();
 }
 
 function reset() {
-	ticks = 0;
-	ticks_wasted = 0;
-	wasted_tiles = new Array();
-	session_active = false;
-	clearInterval(timerTick);
-	moves = new Array();
-	player_position = new Point();
-	targeted_tile = new Point();
-	path_taken = new Array();
+	resetvars();
 	maze = makeSeededMaze(seed);
+	pathWeighting();
 	drawMaze(maze);
 	writeTime();
 }
 
+var start_pos;
 var ticks;
 var ticks_wasted;
 var wasted_tiles;
@@ -277,10 +347,11 @@ var timerTick;
 var session_active;
 var seed;
 var maze;
+var weighted_maze;
 var moves;
 var player_position;
 var targeted_tile;
 var path_taken;
-
+var path_arr;
 
 newSession();
