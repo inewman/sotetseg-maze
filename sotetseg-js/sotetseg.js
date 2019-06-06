@@ -5,7 +5,7 @@ function showAbout() {
 }
 
 const FPS = 50;
-const delta_time = 1000 / FPS;
+const delta_time   = 1000 / FPS;
 
 const tick_length  = 600;
 
@@ -16,7 +16,6 @@ const path_turns   = 8;
 
 const tile_size    = 40;
 const tile_stroke  = tile_size/25;
-
 const color_mazeback = "#323232";
 const color_tilepath = "#961919";
 const color_tilenogo = "#C8C8C8";
@@ -24,9 +23,10 @@ const color_tileplay = "#77dd77";
 const color_tilenext = "#C8C8C8";
 const color_tilesolv = "#6495ED";
 const color_linesolv = "#FFFF00";
-
 const color_circpass = "#008000";
 const color_circfail = "#DC143C";
+const solv_font      = "Arial";
+const solv_fontsize  = 15;
 
 var canvas = document.getElementById("sotetseg-maze");
 var ctx = canvas.getContext("2d");
@@ -157,7 +157,8 @@ function makeSeededMaze(seed) {
 		}
 		y--;
 	}
-	start_pos = new Point(seed[0], maze_height);
+	start_pos = new Point(seed[0], maze_height - 1);
+	end_pos = new Point(seed[seed.length - 1], 0);
 	return maze;
 }
 
@@ -185,9 +186,9 @@ function connectPoints(points, color) {
 	ctx.stroke();
 }
 
-function drawWastedTiles() {
-	for (var i = 0; i < wasted_tiles.length; i++) {
-		drawMazeTile(wasted_tiles[i].x, wasted_tiles[i].y, color_linesolv);
+function drawstalledTiles() {
+	for (var i = 0; i < stalled_tiles.length; i++) {
+		drawMazeTile(stalled_tiles[i].x, stalled_tiles[i].y, color_linesolv);
 	}
 }
 
@@ -206,6 +207,86 @@ function drawText() {
 				ctx.fillText(`(${weighted_maze[x][y]})`, x*tile_size + tile_size*0.5, y*tile_size + tile_size*0.5);
 			}
 		}
+	}
+}
+
+function drawCoords() {
+	for (let x = 0; x < maze_width; x++) {
+		for (let y = 0; y < maze_height; y++) {
+			if (maze[x][y]) {
+				ctx.textAlign = "center";
+				ctx.fillStyle = "#FFFFFF";
+				ctx.fillText(`(${x}, ${y})`, x*tile_size + tile_size*0.5, y*tile_size + tile_size*0.5);
+			}
+		}
+	}
+}
+
+function isValidMove(current_tile, target_tile) {
+	if (target_tile.x < 0 || target_tile.x > maze_width - 1) { // x overflow
+		return false;
+	}
+	if (target_tile.y < 0 || target_tile.y > maze_height - 1) { // y overflow
+		return false;
+	}
+	if (!maze[target_tile.x][target_tile.y]) { // tile clicked is not safe
+		return false;
+	}
+	let move_passed_tiles = getPassedTiles(current_tile, target_tile);
+	for (let i = 0; i < move_passed_tiles.length; i++) {
+		if (!maze[move_passed_tiles[i].x][move_passed_tiles[i].y]) {
+			return false;
+		}
+	}
+	return true;
+}
+
+function solveMaze() {
+	optimal_moves = Array();
+	optimal_moves.push(new Point(start_pos.x, start_pos.y));
+	while (optimal_moves[optimal_moves.length - 1].y > 0) {
+		let c = new Point(optimal_moves[optimal_moves.length - 1].x, optimal_moves[optimal_moves.length - 1].y);
+		let possible_moves = [             // we only care about tiles ahead of us (i.e. not south)
+			new Point(c.x - 2, c.y - 2),   // row of 5 tiles, 2 rows north of current position
+			new Point(c.x - 1, c.y - 2),
+			new Point(c.x, c.y - 2),
+			new Point(c.x + 1, c.y - 2),
+			new Point(c.x + 2, c.y - 2),
+			new Point(c.x - 2, c.y - 1),   // row of 5 tiles, 1 row north of current position
+			new Point(c.x - 1, c.y - 1),
+			new Point(c.x, c.y - 1),
+			new Point(c.x + 1, c.y - 1),
+			new Point(c.x + 2, c.y - 1),
+			new Point(c.x - 2, c.y),       // row of 4 tiles (not including our current position) in the current row
+			new Point(c.x - 1, c.y),
+			new Point(c.x + 1, c.y),
+			new Point(c.x + 2, c.y)
+		];
+		for (let i = 0; i < possible_moves.length; i++) {
+			if (!isValidMove(c, possible_moves[i])) {
+				possible_moves.splice(i, 1);
+				i--;
+				continue;
+			}
+		}
+		let best_move = new Point(-1, -1);
+		let best_move_score = -1;
+		for (let i = 0; i < possible_moves.length; i++) {
+			if (weighted_maze[possible_moves[i].x][possible_moves[i].y] > best_move_score) {
+				best_move = new Point(possible_moves[i].x, possible_moves[i].y);
+				best_move_score = weighted_maze[possible_moves[i].x][possible_moves[i].y];
+			}
+		}
+		optimal_moves.push(new Point(best_move.x, best_move.y));
+	}
+}
+
+function drawSolution() {
+	ctx.textAlign = "center";
+	ctx.fillStyle = "#FFFFFF";
+	ctx.font = `${solv_fontsize}px ${solv_font}`;
+	for (let i = 0; i < optimal_moves.length; i++) {
+		ctx.fillText(`${i+1}`, optimal_moves[i].x*tile_size + tile_size*0.5, optimal_moves[i].y*tile_size + tile_size*0.5 + solv_fontsize*0.3);
 	}
 }
 
@@ -268,7 +349,7 @@ canvas.addEventListener('mousedown', function (event) {
 	drawState();
 	if (moves.length == 0 && !session_active) {
 		session_active = true;
-		player_position = new Point(start_pos.x, start_pos.y);
+		player_position = new Point(start_pos.x, start_pos.y + 1); // start off-screen, 1 tile below first maze tile
 		path_taken.push(targeted_tile);
 		timerTick = setInterval(gameTick, tick_length);
 	}
@@ -276,21 +357,25 @@ canvas.addEventListener('mousedown', function (event) {
 
 function drawState() {
 	drawMaze();
+	drawstalledTiles();
 	drawPassedTiles();
-	drawWastedTiles();
 	if (!(player_position.x == targeted_tile.x && player_position.y == targeted_tile.y)) {
 		drawTargetTile(targeted_tile.x, targeted_tile.y);
 	}
 }
 
+function writePar() {
+	document.getElementById("par").innerHTML = `Best possible time: ${(optimal_moves.length * tick_length/1000).toFixed(1)} seconds (${optimal_moves.length} ticks)`;
+}
+
 function writeTime() {
-	document.getElementById("timer").innerHTML = `${(ticks * tick_length/1000).toFixed(1)} seconds (${ticks} ticks, ${ticks_wasted} wasted)`;
+	document.getElementById("timer").innerHTML = `${(ticks * tick_length/1000).toFixed(1)} seconds (${ticks} ticks, ${ticks_stalled} stalled)`;
 }
 
 function gameTick() {
 	if ((player_position.x == targeted_tile.x && player_position.y == targeted_tile.y)) {
-		ticks_wasted += 1;
-		wasted_tiles.push(new Point(player_position.x, player_position.y));
+		ticks_stalled += 1;
+		stalled_tiles.push(new Point(player_position.x, player_position.y));
 	}
 	ticks += 1;
 	let new_tiles = getPassedTiles(player_position, targeted_tile);
@@ -312,8 +397,8 @@ function gameFrame() {
 
 function resetvars() {
 	ticks = 0;
-	ticks_wasted = 0;
-	wasted_tiles = new Array();
+	ticks_stalled = 0;
+	stalled_tiles = new Array();
 	path_arr= new Array();
 	session_active = false;
 	clearInterval(timerTick);
@@ -327,7 +412,9 @@ function newSession() {
 	resetvars();
 	maze = makeMaze();
 	pathWeighting();
+	solveMaze();
 	drawMaze(maze);
+	writePar();
 	writeTime();
 }
 
@@ -335,20 +422,24 @@ function reset() {
 	resetvars();
 	maze = makeSeededMaze(seed);
 	pathWeighting();
+	solveMaze();
 	drawMaze(maze);
+	writePar();
 	writeTime();
 }
 
 var start_pos;
+var end_pos;
 var ticks;
-var ticks_wasted;
-var wasted_tiles;
+var ticks_stalled;
+var stalled_tiles;
 var timerTick;
 var session_active;
 var seed;
 var maze;
 var weighted_maze;
 var moves;
+var optimal_moves;
 var player_position;
 var targeted_tile;
 var path_taken;
